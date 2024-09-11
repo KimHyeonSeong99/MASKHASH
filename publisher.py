@@ -1,5 +1,6 @@
 import hashlib
 import os
+import sys
 import base64
 import json
 import paho.mqtt.client as mqtt
@@ -14,13 +15,27 @@ userId = "Alice"
 userPw = "mose"
 brokerIp = "203.246.114.226"
 port = 1883
-master_key = 'adflajskahjklen10294uhtjklna'
 ecu_information = 'E120RS19A8000'
 
-def string_to_bits(input_string):
-    bits = ''.join(format(ord(char), '08b') for char in input_string)
-    return bits
 
+def get_master_key():
+    master_key_path = os.path.join(os.getcwd(),'MASTERKEY.txt')
+    try:
+        with open(os.path.join(os.getcwd(),'MATERKEYHASH.txt')) as hash:
+            master_key_hash = hash.read()
+        if compute_file_hash(master_key_path) == master_key_hash:
+                    with open(master_key_path,'r') as file:
+                        master_key = file.read()
+        else:
+            print("The master key has some problem! Stop processing now!")
+            sys.exit()
+
+    except FileNotFoundError as e:
+        print(e)
+        sys.exit()
+
+    return master_key
+        
 # Function to compute the SHA-256 hash of a file
 def compute_file_hash(file_path):
     sha256_hash = hashlib.sha256()
@@ -68,17 +83,20 @@ def on_publish(client, userdata, mid):
 
 # Function to create the message with file details and content
 def make_message(file_path):
-    FileName = os.path.basename(file_path)
-    split_file_name = FileName.split('-')
+    file_name = os.path.basename(file_path)
+    split_file_name = file_name.split('-')
     message = dict()
     message['flag'] = 'update'
     message['file_name'] = split_file_name[-1]
     message['version'] = split_file_name[1]
     message['target'] = split_file_name[0]
+    if split_file_name[-1].split('.')[-1] == 'png':
+        message['type'] = 'image'
+    else:
+        message['type'] = 'firmware'
     
-
     try:
-        if message['target'] == 'image':
+        if message['type'] == 'image':
             with open(file_path, "rb") as stream:
                 img_bin = stream.read()
                 encoded_img = base64.b64encode(img_bin)
@@ -106,12 +124,13 @@ def on_message(client, userdata, msg):
     print("Receive a new request: ", request)
     if request['flag'] == 'request':
         try:
+            message['flag'] = 'update'
             file_path = os.path.join(tmp_path,request['file_name'])
             vehicle_features = request['vehicle_features']
             message = make_message(file_path)
             message['hash'] = compute_file_hash(file_path)  # Add file hash to the message
-            message['mask_hash'] = compute_file_hash_with_mask(file_path, generate_mask(master_key, vehicle_features.encode('utf-8'), ecu_information.encode('utf-8')))
-            message['flag'] = 'update'
+            message['mask_hash'] = compute_file_hash_with_mask(file_path, generate_mask(master_key, vehicle_features.encode('utf-8'), ecu_information.encode('utf-8')))    
+            
             # Publish the message to the MQTT topic
             client.publish(f"update/{message['file_name']}", json.dumps(message), 2, retain = True)
             print("File sent successfully.")
@@ -201,4 +220,5 @@ def main():
     observer_image.join()
 
 if __name__ == "__main__":
+    master_key = get_master_key()
     main()

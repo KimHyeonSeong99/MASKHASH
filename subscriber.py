@@ -14,7 +14,7 @@ userId = "Alice"
 userPw = "mose"
 brokerIp = "203.246.114.226"
 port = 1883
-server_host = "203.246.114.226"
+server_host = {'cluster':"203.246.114.226"}
 server_port = 12345
 tmp_directory = "C:/Users/user/MASKHASH/download/"
 chassis_number = '1A31874UEQ'
@@ -125,8 +125,8 @@ def send_file(server_host, server_port, file_path, buffer_size=4096, mask_hash =
 def on_message(client, userdata, msg):
 
     try:
-        versionPath = os.path.join(tmp_directory,"version.json")
-        with open(versionPath,"r") as versionlist:
+        version_path = os.path.join(tmp_directory,"version.json")
+        with open(version_path,"r") as versionlist:
             version = json.load(versionlist)
     except:
         version = dict()
@@ -147,15 +147,16 @@ def on_message(client, userdata, msg):
     elif flag == 'update':
         file_name = payload['file_name']
         file_version = payload['version']
-        file_target = payload['target']
+        file_type = payload['type']
         file_hash = payload['hash']
         file_mask_hash = payload['mask_hash']
+        file_target = payload['target']
         if float(version[file_name]) < float(file_version):
-            if file_target == 'firmware':
+            if file_type == 'firmware':
                 try:
                     file_data = payload['file']
                 except:
-                    print('Error: wrong target!')
+                    print('Error: wrong type!')
                 try:
                     firmware_path = os.path.join(tmp_directory, file_name)
                     with open(firmware_path,"w") as stream:
@@ -175,9 +176,9 @@ def on_message(client, userdata, msg):
                 cv2.imwrite(firmware_path, img)
 
             if file_hash == compute_file_hash(firmware_path):
-                send_file(server_host, server_port, firmware_path, mask_hash= file_mask_hash)
+                send_file(server_host.get(file_target), server_port, firmware_path, mask_hash= file_mask_hash)
                 version[file_name] = file_version
-                with open(versionPath,"w") as versionlist:
+                with open(version_path,"w") as versionlist:
                     versionlist.write(json.dumps(version))
             
             else:
