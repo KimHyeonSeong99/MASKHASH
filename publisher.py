@@ -21,7 +21,7 @@ ecu_information = 'E120RS19A8000'
 def get_master_key():
     master_key_path = os.path.join(os.getcwd(),'MASTERKEY.txt')
     try:
-        with open(os.path.join(os.getcwd(),'MATERKEYHASH.txt')) as hash:
+        with open(os.path.join(os.getcwd(),'MASTERKEYHASH.txt')) as hash:
             master_key_hash = hash.read()
         if compute_file_hash(master_key_path) == master_key_hash:
                     with open(master_key_path,'r') as file:
