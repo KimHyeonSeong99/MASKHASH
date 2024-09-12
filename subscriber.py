@@ -110,15 +110,11 @@ def ignore_error_alert():
     OTA_UI.mainloop()
 
 
-def send_file(server_host, server_port, file_path, buffer_size=4096, mask_hash = None):
+def send_file(server_host, server_port, message, buffer_size=4096):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((server_host, server_port))
         print(f"Connected to server {server_host}:{server_port}")
-        client_socket.sendall(os.path.basename(file_path))
-        client_socket.sendall(mask_hash)
-        with open(file_path, "rb") as f:
-            while (data := f.read(buffer_size)):
-                client_socket.sendall(data)
+        client_socket.sendall(message.encode('utf-8'))
         print("File sent successfully.")
 
 # subscriber callback
@@ -135,10 +131,10 @@ def on_message(client, userdata, msg):
     flag = payload['flag']
     if flag == 'notification':
         print("Receive a update notify")
-        flag = 1
-        while(flag):
+        choice = 1
+        while(choice):
             flag = update_choice()
-            time.sleep(flag)
+            time.sleep(choice)
         payload['flag'] = 'request'
         payload['vehicle_features'] = chassis_number
         client.publish("request",json.dumps(payload))
@@ -158,29 +154,47 @@ def on_message(client, userdata, msg):
                 except:
                     print('Error: wrong type!')
                 try:
-                    firmware_path = os.path.join(tmp_directory, file_name)
-                    with open(firmware_path,"w") as stream:
+                    file_path = os.path.join(tmp_directory, file_name)
+                    with open(file_path,"w") as stream:
                         stream.write(file_data)
                     time.sleep(1)
-                    print(f"Firmware downloaded and saved to {tmp_directory}")
+                    print(f"File downloaded and saved to {tmp_directory}")
                 except Exception as e:
-                    print(f"Error downloading the firmware: {e}")
-                    print(f"firmware directory: {tmp_directory}")
-                    print(f"firmware path: {firmware_path}")
+                    print(f"Error downloading the file: {e}")
+                    print(f"file directory: {tmp_directory}")
+                    print(f"file path: {file_path}")
             else:
                 ImageData = payload['file'].encode()
                 decode_img = base64.b64decode(ImageData)
                 img_out = Image.open(io.BytesIO(decode_img))
                 img_array = np.array(img_out)
                 img = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
-                cv2.imwrite(firmware_path, img)
+                cv2.imwrite(file_path, img)
 
-            if file_hash == compute_file_hash(firmware_path):
-                send_file(server_host.get(file_target), server_port, firmware_path, mask_hash= file_mask_hash)
-                version[file_name] = file_version
-                with open(version_path,"w") as versionlist:
-                    versionlist.write(json.dumps(version))
-            
+            if file_hash == compute_file_hash(file_path):
+                with open(file_path, 'rb') as file:
+                    file_contents = file.read()
+                try:
+                    if file_type == 'image':
+                        message = f'\\image\\{file_name}:{file_mask_hash}:{file_contents}'
+                    else:
+                        message = f'{file_name}:{file_mask_hash}:{file_contents}'
+                    try_update = 1
+                except:
+                    print("Fail Make message")
+                    try_update = 0
+
+                while(try_update):  
+                    try:
+                        send_file(server_host.get(file_target), server_port, message)
+                        try_update = 0
+                        version[file_name] = file_version
+                        with open(version_path,"w") as versionlist:
+                            versionlist.write(json.dumps(version))
+                    except:
+                        print("Cluster and Controller are not conected! \nRetry send file")
+                        time.sleep(10)
+
             else:
                 if ignore_error_alert():
                     payload['flag'] = 'request'
