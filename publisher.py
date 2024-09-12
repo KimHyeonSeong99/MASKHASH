@@ -9,7 +9,7 @@ from watchdog.events import FileSystemEventHandler
 
 program_path = os.getcwd()
 path = {"firmware": os.path.join(program_path,"update_firmware"),"image": os.path.join(program_path,"update_image")}
-tmp_path = os.path.join(program_path,"tmp")
+update_path = os.path.join(program_path,"updated")
 Sub_Topic = "updates"
 userId = "Alice"
 userPw = "mose"
@@ -46,7 +46,7 @@ def compute_file_hash(file_path):
 
 def compute_file_hash_with_mask(file_path, mask):
     sha256_hash = hashlib.sha256()
-    mask = bin(int(mask,16))[2:]
+    mask = mask.encode('utf-8')
     
     with open(file_path, "rb") as file:
         for chunk in iter(lambda: file.read(512), b""):
@@ -65,7 +65,7 @@ def generate_mask(password: str, chassis_number: bytes = None, ECU_information: 
         dklen=512  
     )
     print(f"Generated 4096-bit key: {derived_key.hex()}")
-    return derived_key
+    return derived_key.hex()
 
 # MQTT event handlers
 def on_connect(client, userdata, flags, rc):
@@ -119,20 +119,19 @@ def make_message(file_path):
 # MQTT event handler for incoming file requests
 def on_message(client, userdata, msg):
     request = json.loads(msg.payload)
-    print(f"Received request: {request}")
     # Assuming the payload is the file path
-    print("Receive a new request: ", request)
     if request['flag'] == 'request':
+        print(f"Received request: {request}")
         try:
-            message['flag'] = 'update'
-            file_path = os.path.join(tmp_path,request['file_name'])
+            file_path = os.path.join(update_path,request['file_name'])
             vehicle_features = request['vehicle_features']
             message = make_message(file_path)
+            message['flag'] = 'update'
             message['hash'] = compute_file_hash(file_path)  # Add file hash to the message
             message['mask_hash'] = compute_file_hash_with_mask(file_path, generate_mask(master_key, vehicle_features.encode('utf-8'), ecu_information.encode('utf-8')))    
             
             # Publish the message to the MQTT topic
-            client.publish(f"update/{message['file_name']}", json.dumps(message), 2, retain = True)
+            client.publish(f"update/{message['file_name']}", json.dumps(message), 0, retain = True)
             print("File sent successfully.")
         
         except ValueError as e: 
@@ -161,13 +160,12 @@ def notify_new_file(client, file_path):
     notification = dict()
     notification['flag']= 'notification'
     notification['file_name'] = file_name
-    notification['version'] = split_file_name[1]
-    save_path = os.path.join(tmp_path,notification['file_name'])
+    save_path = os.path.join(update_path,notification['file_name'])
     if split_file_name[0] == 'image':
         with open(save_path, "wb") as stream:
             stream.write(data)
     else:
-        with open(save_path, 'w', encoding='utf-8') as stream:
+        with open(save_path, 'wb') as stream:
             stream.write(data)
     
     # Publish the notification

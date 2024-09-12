@@ -16,7 +16,7 @@ brokerIp = "203.246.114.226"
 port = 1883
 server_host = {'cluster':"203.246.114.226"}
 server_port = 12345
-tmp_directory = "C:/Users/user/MASKHASH/download/"
+tmp_directory = "C:/Users/user/MASKHASH/tmp/"
 chassis_number = '1A31874UEQ'
 
 def compute_file_hash(file_path):
@@ -75,6 +75,7 @@ def update_choice():
     return timelist.get(later_time.get())
 
 def ignore_error_alert():
+    choice = {'Retry': 1, 'Stop': 0}
     OTA_UI = Tk()
     choice_retry = StringVar()
     OTA_UI.title("ignore error alert")
@@ -99,7 +100,6 @@ def ignore_error_alert():
         else:
             messagebox.showinfo("Notice","You must choice \'Retry\' or \'Stop\'!")
             
-            
     button_Submit = Button(OTA_UI,text = 'submit',command = event_PB)
     choice_retry_retry_0 = Radiobutton(OTA_UI, text = 'Retry', value = 'Retry', variable = choice_retry)
     choice_retry_retry_1 = Radiobutton(OTA_UI, text = 'Stop', value = 'Stop', variable = choice_retry)
@@ -108,7 +108,7 @@ def ignore_error_alert():
     choice_retry_retry_0.pack()
     choice_retry_retry_1.pack()
     OTA_UI.mainloop()
-
+    return choice.get(choice_retry.get())
 
 def send_file(server_host, server_port, message, buffer_size=4096):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
@@ -130,76 +130,18 @@ def on_message(client, userdata, msg):
     payload = json.loads(msg.payload)
     flag = payload['flag']
     if flag == 'notification':
-        print("Receive a update notify")
-        choice = 1
-        while(choice):
-            flag = update_choice()
-            time.sleep(choice)
-        payload['flag'] = 'request'
-        payload['vehicle_features'] = chassis_number
-        client.publish("request",json.dumps(payload))
-        print("Request sent for new file:", payload)
-
-    elif flag == 'update':
-        file_name = payload['file_name']
-        file_version = payload['version']
-        file_type = payload['type']
-        file_hash = payload['hash']
-        file_mask_hash = payload['mask_hash']
-        file_target = payload['target']
+        file_name = payload['file_name'].split('-')[-1]
+        file_version = payload['file_name'].split('-')[1]
         if float(version[file_name]) < float(file_version):
-            if file_type == 'firmware':
-                try:
-                    file_data = payload['file']
-                except:
-                    print('Error: wrong type!')
-                try:
-                    file_path = os.path.join(tmp_directory, file_name)
-                    with open(file_path,"w") as stream:
-                        stream.write(file_data)
-                    time.sleep(1)
-                    print(f"File downloaded and saved to {tmp_directory}")
-                except Exception as e:
-                    print(f"Error downloading the file: {e}")
-                    print(f"file directory: {tmp_directory}")
-                    print(f"file path: {file_path}")
-            else:
-                ImageData = payload['file'].encode()
-                decode_img = base64.b64decode(ImageData)
-                img_out = Image.open(io.BytesIO(decode_img))
-                img_array = np.array(img_out)
-                img = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
-                cv2.imwrite(file_path, img)
-
-            if file_hash == compute_file_hash(file_path):
-                with open(file_path, 'rb') as file:
-                    file_contents = file.read()
-                try:
-                    if file_type == 'image':
-                        message = f'\\image\\{file_name}:{file_mask_hash}:{file_contents}'
-                    else:
-                        message = f'{file_name}:{file_mask_hash}:{file_contents}'
-                    try_update = 1
-                except:
-                    print("Fail Make message")
-                    try_update = 0
-
-                while(try_update):  
-                    try:
-                        send_file(server_host.get(file_target), server_port, message)
-                        try_update = 0
-                        version[file_name] = file_version
-                        with open(version_path,"w") as versionlist:
-                            versionlist.write(json.dumps(version))
-                    except:
-                        print("Cluster and Controller are not conected! \nRetry send file")
-                        time.sleep(10)
-
-            else:
-                if ignore_error_alert():
-                    payload['flag'] = 'request'
-                    payload['vehicle_features'] = chassis_number
-                    client.publish("request",json.dumps(payload))
+            print("Receive a update notify")
+            choice = 1
+            while(choice):
+                choice = update_choice()
+                time.sleep(choice)
+            payload['flag'] = 'request'
+            payload['vehicle_features'] = chassis_number
+            client.publish("request",json.dumps(payload))
+            print("Request sent for new file:", payload)
 
         else:
             print("="*50)
@@ -209,6 +151,69 @@ def on_message(client, userdata, msg):
             print("new firmware version is old version, pass the update")
             print("="*50)
 
+    elif flag == 'update':
+        file_name = payload['file_name']
+        file_version = payload['version']
+        file_type = payload['type']
+        file_hash = payload['hash']
+        file_mask_hash = payload['mask_hash']
+        file_target = payload['target']
+        if file_type == 'firmware':
+            try:
+                file_data = payload['file']
+            except:
+                print('Error: wrong type!')
+            try:
+                file_path = os.path.join(tmp_directory, file_name)
+                with open(file_path,"w", encoding='utf-8') as stream:
+                    stream.write(file_data)
+                time.sleep(1)
+                print(f"File downloaded and saved to {tmp_directory}")
+            except Exception as e:
+                print(f"Error downloading the file: {e}")
+                print(f"file directory: {tmp_directory}")
+                print(f"file path: {file_path}")
+        else:
+            ImageData = payload['file'].encode()
+            decode_img = base64.b64decode(ImageData)
+            img_out = Image.open(io.BytesIO(decode_img))
+            img_array = np.array(img_out)
+            img = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
+            cv2.imwrite(file_path, img)
+        computed_file_hash = compute_file_hash(file_path)
+        print(f'{file_hash}:{computed_file_hash}')
+        if file_hash == computed_file_hash:
+            with open(file_path, 'rb') as file:
+                file_contents = file.read()
+            try:
+                if file_type == 'image':
+                    message = f'\\image\\{file_name}:{file_mask_hash}:{file_contents}'
+                else:
+                    message = f'{file_name}:{file_mask_hash}:{file_contents}'
+                try_update = 1
+            except:
+                print("Fail Make message")
+                try_update = 0
+
+            while(try_update):  
+                try:
+                    send_file(server_host.get(file_target), server_port, message)
+                    try_update = 0
+                    version[file_name] = file_version
+                    with open(version_path,"w") as versionlist:
+                        versionlist.write(json.dumps(version))
+                except:
+                    print("Cluster and Controller are not conected! \nRetry send file")
+                    time.sleep(10)
+
+        else:
+            if ignore_error_alert():
+                request = {}
+                request['flag'] = 'request'
+                request['vehicle_features'] = chassis_number
+                request['file_name'] = '-'.join([payload['target'],payload['version'],payload['file_name']])
+                print("Request sent for file:", request)
+                client.publish("request",json.dumps(payload))
 
         print("Ready for a new update")
 
