@@ -42,13 +42,14 @@ def receive_file(server_host, server_port, buffer_size=4096):
                 with open(file_path, "wb") as f:
                     f.write(file_content)
                     computed_mask_hash = compute_file_hash_with_mask(file_path, mask)
+                    print(f"{computed_mask_hash}:{file_mask_hash}")
                     if file_mask_hash == computed_mask_hash:
                         # os.chdir('/home/sea/sea-me-hackathon-2023/Cluster/src/')
                         # os.system("make -j6")
                         print("Match the file mask hash")
                     else:
-                        print(f"{computed_mask_hash}:{file_mask_hash}")
                         print("Detect file ignore error!")
+                        os.system(f"del {file_path}")
 
                 print("File received successfully.")
                 

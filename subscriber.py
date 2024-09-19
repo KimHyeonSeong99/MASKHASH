@@ -17,6 +17,8 @@ port = 1883
 server_host = {'cluster':"203.246.114.226"}
 server_port = 12345
 tmp_directory = "C:/Users/user/MASKHASH/tmp/"
+if not os.path.exists(tmp_directory):
+    os.makedirs(tmp_directory)
 chassis_number = '1A31874UEQ'
 
 def compute_file_hash(file_path):
@@ -161,28 +163,20 @@ def on_message(client, userdata, msg):
         file_hash = payload['hash']
         file_mask_hash = payload['mask_hash']
         file_target = payload['target']
-        if file_type == 'firmware':
-            try:
-                file_data = payload['file']
-            except:
-                print('Error: wrong type!')
-            try:
-                file_path = os.path.join(tmp_directory, file_name)
-                with open(file_path,"w", encoding='utf-8') as stream:
-                    stream.write(file_data)
-                time.sleep(1)
-                print(f"File downloaded and saved to {tmp_directory}")
-            except Exception as e:
-                print(f"Error downloading the file: {e}")
-                print(f"file directory: {tmp_directory}")
-                print(f"file path: {file_path}")
-        else:
-            ImageData = payload['file'].encode()
-            decode_img = base64.b64decode(ImageData)
-            img_out = Image.open(io.BytesIO(decode_img))
-            img_array = np.array(img_out)
-            img = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
-            cv2.imwrite(file_path, img)
+        try:
+            file_data = base64.b64decode(payload['file'].encode('utf-8'))
+            file_path = os.path.join(tmp_directory, file_name)
+        
+            with open(file_path, "wb") as stream:
+                stream.write(file_data)
+            time.sleep(1)
+            print(f"File downloaded and saved to {tmp_directory}")
+
+        except Exception as e:
+            print(f"Error downloading the file: {e}")
+            print(f"file directory: {tmp_directory}")
+            print(f"file path: {file_path}")
+
         computed_file_hash = compute_file_hash(file_path)
         print(f'{file_hash}:{computed_file_hash}')
         if file_hash == computed_file_hash:

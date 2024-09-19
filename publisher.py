@@ -64,7 +64,6 @@ def generate_mask(password: str, chassis_number: bytes = None, ECU_information: 
         iterations,  
         dklen=512  
     )
-    print(f"Generated 4096-bit key: {derived_key.hex()}")
     return derived_key.hex()
 
 # MQTT event handlers
@@ -90,20 +89,13 @@ def make_message(file_path):
     message['file_name'] = split_file_name[-1]
     message['version'] = split_file_name[1]
     message['target'] = split_file_name[0]
-    if split_file_name[-1].split('.')[-1] == 'png':
+    if file_name.endswith('.png'):
         message['type'] = 'image'
     else:
         message['type'] = 'firmware'
-    
     try:
-        if message['type'] == 'image':
-            with open(file_path, "rb") as stream:
-                img_bin = stream.read()
-                encoded_img = base64.b64encode(img_bin)
-            message['file'] = encoded_img.decode()
-        else:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                message['file'] = file.read()
+        with open(file_path, 'rb') as file:
+            message['file'] = base64.b64encode(file.read()).decode('utf-8')
 
         print('='*30)
         print("File name: " + message['file_name'])
@@ -128,7 +120,9 @@ def on_message(client, userdata, msg):
             message = make_message(file_path)
             message['flag'] = 'update'
             message['hash'] = compute_file_hash(file_path)  # Add file hash to the message
-            message['mask_hash'] = compute_file_hash_with_mask(file_path, generate_mask(master_key, vehicle_features.encode('utf-8'), ecu_information.encode('utf-8')))    
+            message['mask_hash'] = compute_file_hash_with_mask(file_path, generate_mask(master_key, vehicle_features.encode('utf-8'), ecu_information.encode('utf-8')))
+            print(f"File hash: {message['hash']}")
+            print(f"File mask hash: {message['mask_hash']}")
             
             # Publish the message to the MQTT topic
             client.publish(f"update/{message['file_name']}", json.dumps(message), 0, retain = True)
@@ -143,15 +137,10 @@ def on_message(client, userdata, msg):
 # Function to notify the vehicle of a new file
 def notify_new_file(client, file_path):
     file_name = os.path.basename(file_path)
-    split_file_name = file_name.split('-')
 
     try:
-        if split_file_name[0] == 'image':
-            with open(file_path, "rb") as stream:
-                data = stream.read()
-        else:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                data = file.read()
+        with open(file_path, "rb") as stream:
+            data = stream.read()
 
     except FileNotFoundError as e:
         print("Error:", e)
@@ -161,12 +150,8 @@ def notify_new_file(client, file_path):
     notification['flag']= 'notification'
     notification['file_name'] = file_name
     save_path = os.path.join(update_path,notification['file_name'])
-    if split_file_name[0] == 'image':
-        with open(save_path, "wb") as stream:
-            stream.write(data)
-    else:
-        with open(save_path, 'wb') as stream:
-            stream.write(data)
+    with open(save_path, "wb") as stream:
+        stream.write(data)
     
     # Publish the notification
     client.publish("notify", json.dumps(notification), 2, retain = True)
