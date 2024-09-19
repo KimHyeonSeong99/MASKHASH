@@ -110,11 +110,14 @@ def ignore_error_alert():
     OTA_UI.mainloop()
     return choice.get(choice_retry.get())
 
-def send_file(server_host, server_port, message, buffer_size=4096):
+def send_file(server_host, server_port, message, file_path, buffer_size=4096):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((server_host, server_port))
         print(f"Connected to server {server_host}:{server_port}")
         client_socket.sendall(message.encode('utf-8'))
+        with open(file_path, "rb") as f:
+            while (data := f.read(buffer_size)):
+                client_socket.send(data)
         print("File sent successfully.")
 
 # subscriber callback
@@ -183,13 +186,12 @@ def on_message(client, userdata, msg):
         computed_file_hash = compute_file_hash(file_path)
         print(f'{file_hash}:{computed_file_hash}')
         if file_hash == computed_file_hash:
-            with open(file_path, 'rb') as file:
-                file_contents = file.read()
+            
             try:
                 if file_type == 'image':
-                    message = f'\\image\\{file_name}:{file_mask_hash}:{file_contents}'
+                    message = f'\\image\\{file_name}:{file_mask_hash}:'
                 else:
-                    message = f'{file_name}:{file_mask_hash}:{file_contents}'
+                    message = f'{file_name}:{file_mask_hash}:'
                 try_update = 1
             except:
                 print("Fail Make message")
@@ -197,7 +199,7 @@ def on_message(client, userdata, msg):
 
             while(try_update):  
                 try:
-                    send_file(server_host.get(file_target), server_port, message)
+                    send_file(server_host.get(file_target), server_port, message, file_path)
                     try_update = 0
                     version[file_name] = file_version
                     with open(version_path,"w") as versionlist:
